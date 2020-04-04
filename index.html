@@ -1,0 +1,162 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>My firebase upload page</title>
+    <style>
+        * {
+            /*color :burlywood;*/
+            font-size:medium;
+        }
+
+        #buttonSend, #buttonSave{
+            border-radius: 5px;
+            font-size: larger;
+            color: red;
+        }
+
+        form {
+            /*color:aqua;*/
+        }
+        img {
+            width: 300px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>Please input yor message and image</h2>
+    <form>
+        <label for="fname">directory :</label>
+        <input type="text" id="dirId" value="images">
+        <input type="button" id="buttonPrev" value="Prev" onclick="btPrev()">
+        <input type="button" id="buttonNext" value="Next" onclick="btNext()">
+        <input type="button" id="buttonSend" value="Send" onclick="btSend()"> <br>
+        <label for="lname">message :</label>
+        <textarea type="text" id="messageId" rows="1" cols="40"></textarea>
+
+    </form>
+    <input type="file" onchange="previewFile()">
+    <input type="button" id="buttonSave" value="Save" onclick="btSave()"><br>
+    <img src="" alt="Image preview...">
+
+
+    <!-- The core Firebase JS SDK is always required and must be listed first -->
+    <script src="/__/firebase/7.12.0/firebase-app.js"></script>
+
+    <!-- TODO: Add SDKs for Firebase products that you want to use
+         https://firebase.google.com/docs/web/setup#available-libraries -->
+    <script src="/__/firebase/7.12.0/firebase-analytics.js"></script>
+    <script src="/__/firebase/7.12.0/firebase-storage.js"></script>
+    <script src="/__/firebase/7.12.0/firebase-auth.js"></script>
+
+    <!-- Initialize Firebase -->
+    <script src="/__/firebase/init.js"></script>
+    <script>
+        let storage = firebase.storage();
+        let storageRef = storage.ref();
+        let imageRef = storageRef.child('images');
+        let image_idx = 0, all_files=[], all_dates=[];
+
+        const preview = document.querySelector('img');
+        // for my new message and file slection
+        let textDir = document.getElementById('dirId');
+        let msgTxt = document.getElementById('messageId');
+
+        function btSend() {
+            console.log('Send button event');
+            const file = document.querySelector('input[type=file]').files[0];
+            imageRef = storageRef.child(textDir.value);
+            if (msgTxt.value !== "" && file) {
+                let rn = new Date();  //right now
+                let timeStamp = rn.getFullYear() + '_' +
+                    padZero((rn.getMonth() + 1)) + padZero(rn.getDate()) + '_' +
+                    padZero(rn.getHours()) + padZero(rn.getMinutes()) + padZero(rn.getSeconds());
+
+                //ref.  https://firebase.google.com/docs/storage/web/upload-files
+                let fname_txt = timeStamp + '.html'
+                messageRef = imageRef.child(fname_txt);
+                messageRef.putString(msgTxt.value).then(function (snapshot) {
+                    console.log('message file: ' + fname_txt);
+                });
+                let fname_img = timeStamp + '.' + file.name.split('.').pop();
+                messageRef = imageRef.child(fname_img);
+                messageRef.put(file).then(function (snapshot) {
+                    console.log('image file: ' + fname_img);
+                });
+                setTimeout(list_all_files(), 5000);     // delay 5 seconds to call list_all_files()
+
+                alert(fname_img + '\n' + fname_txt + '\n' +
+                    'Web location: ' + imageRef.bucket + ':' + imageRef.fullPath);
+            } else alert('message and image: cannot be empty !');
+        }
+        function previewFile() { //ref. https://developer.mozilla.org/en-US/docs/Web/API/FileReader/readAsDataURL
+
+            const file = document.querySelector('input[type=file]').files[0];
+            const reader = new FileReader();
+
+            reader.addEventListener("load", function () {
+                // convert image file to base64 string
+                preview.src = reader.result;
+            }, false);
+
+            if (file) { reader.readAsDataURL(file); }
+        }
+        function padZero(i) {
+            return (i > 9 ? i : '0' + i);
+        }
+        function list_all_files() {      //https://firebase.google.com/docs/storage/web/list-files?authuser=0
+            all_files = [];
+            imageRef.listAll().then(function (res) {
+                res.items.forEach(function (itemRef) {
+                    //console.log(itemRef);
+                    itemRef.getDownloadURL().then(function (url) {
+                        all_files.push(url);
+                    });
+                });
+            });
+        }
+        function list_all_dates() {
+            let re = /\d{4}_\d{4}_\d{6}/;       //regexp to match 2010_0401_012345  time stamp
+
+            //console.log(all_files.length, "this is debug!");
+            //console.log(all_files);
+
+            let dates = new Set(all_files.map(f => f.match(re)[0]));   // find all possible dates
+            dates = Array.from(dates).sort().reverse();               // and sort
+            all_dates = [];
+            for (let i = 0; i < dates.length; i++) {
+                let re0 = new RegExp(dates[i] + '\\.(jpg|jfif|png)', 'i');  //get image filename
+                let re1 = new RegExp(dates[i] + '\\.(txt|html)', 'i');      //get text filename
+                all_dates.push([all_files.filter(f => f.match(re0))[0],
+                                all_files.filter(f => f.match(re1))[0]]);
+            }
+        }
+        function btPrev() {
+            image_idx = (image_idx < all_dates.length - 1) ? image_idx + 1 : image_idx;
+            show_date();
+        }
+        function btNext() {
+            image_idx = (image_idx > 0) ? image_idx - 1 : image_idx;
+            show_date();
+        }
+        function show_date() {
+            list_all_dates();
+            preview.src = all_dates[image_idx][0];
+            msgTxt.value = '' + image_idx + '/' + all_dates.length + ' ' +
+                all_dates[image_idx][0].match(/\d{4}_\d{4}_\d{6}\.\w*/)[0]; //get image filename
+        }
+        function btSave() {
+            if (!all_files[0] || !all_files[0].match("/"+textDir.value+"%")) {
+                imageRef = storageRef.child(textDir.value);
+                list_all_files();
+                list_all_dates();
+            }
+            alert(`Will be finished soon !\n ` +
+                `Total ${all_files.length} files\n` +
+                all_files.map(f => f.match(/\d{4}_\d{4}_\d{6}\.\w*/)[0] +"\n"));
+        }
+
+    </script>
+</body>
+</html>
